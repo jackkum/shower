@@ -23,6 +23,8 @@ enum CHANELS {
 	ADC6
 };
 
+#define  GET_COLUMN(V) (10UL * (V * 100UL / 1023UL) / 100UL)
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
@@ -65,11 +67,6 @@ volatile uint16_t v6 = 0;
 void checkChanel(const unsigned char index, const unsigned char mask, const unsigned int level);
 void reDraw(void);
 
-uint8_t getColumn(uint16_t c)
-{
-	return 10 * (c * 100 / 1023) / 100;
-}
-
 static void ir_start_timer()
 {
 	TIMSK |= (1 << TOIE0);
@@ -98,7 +95,8 @@ ISR(USART_RXC_vect)
 
 ISR(TIMER1_OVF_vect)
 {
-	PORTD ^=  (1<<4);
+	PORTD |= (1<<4);
+	asm("nop");
 	checkChanel(0, BIT_1, c1);
 	checkChanel(1, BIT_2, c2);
 	checkChanel(2, BIT_3, c3);
@@ -123,7 +121,6 @@ ISR(TIMER0_OVF_vect)
 // внешнее прерывание по фронту и спаду
 ISR(INT0_vect)
 {
-	PORTD ^=  (1<<4);
 	uint8_t delta;
 	if(ir.rx_started)
 	{
@@ -150,8 +147,6 @@ static inline void ir_init()
 
 void checkChanel(const unsigned char index, const unsigned char mask, const unsigned int level)
 {
-	PORTD ^= (1<<4);
-	
 	if(level == 0xFFFF){
 		return;
 	}
@@ -181,7 +176,7 @@ void checkChanel(const unsigned char index, const unsigned char mask, const unsi
 
 void printValue(const uint16_t v)
 {
-	uint8_t l = 5 - sprintf(str, "%d", v);
+	uint8_t l = 5 - sprintf(str, "%u", v);
 	while(l--) RS_putc(' ');
 	RS_puts(str);
 	RS_puts("  ");
@@ -202,7 +197,7 @@ void reDraw(void)
 	for(uint8_t i = 0; i < 6; i++){
 		RS_puts("   ");
 		RS_putc(selected == i ? '*' : ' ');
-		sprintf(str, "%d  ", i+1);
+		sprintf(str, "%u  ", i+1);
 		RS_puts(str);
 	}
 	
@@ -211,12 +206,12 @@ void reDraw(void)
 	RS_puts("---------------------------------------------\r\n");
 	
 	uint8_t values[6] = {
-		getColumn(c1),
-		getColumn(c2),
-		getColumn(c3),
-		getColumn(c4),
-		getColumn(c5),
-		getColumn(c6)
+		GET_COLUMN(c1),
+		GET_COLUMN(c2),
+		GET_COLUMN(c3),
+		GET_COLUMN(c4),
+		GET_COLUMN(c5),
+		GET_COLUMN(c6)
 	};
 	
 	for(uint8_t l = 10; l > 0; l--){
@@ -224,6 +219,8 @@ void reDraw(void)
 		
 		for(uint8_t i = 0; i < 6; i++){
 			RS_puts("    ");
+			//sprintf(str, "%u", values[i]);
+			//RS_puts(str);
 			RS_putc(values[i] >= l ? '#' : ' ');
 			RS_puts("  ");
 		}
@@ -267,7 +264,6 @@ int main(void)
 	DDRC  = 0x00;
 	DDRB  = 0xFF;
 	DDRD |= (1<<4)|(0<<2);
-	//PORTD |= (1<<2);
 	
 	UBRRH = 0;
 	UBRRL = 51; //скорость обмена 9600 бод
@@ -290,6 +286,13 @@ int main(void)
 	c4 = (uint16_t) eeprom_read_word((uint16_t *)0x06);
 	c5 = (uint16_t) eeprom_read_word((uint16_t *)0x08);
 	c6 = (uint16_t) eeprom_read_word((uint16_t *)0x0A);
+
+	c1 = c1 > 1023 ? 0 : c1;
+	c2 = c2 > 1023 ? 0 : c2;
+	c3 = c3 > 1023 ? 0 : c3;
+	c4 = c4 > 1023 ? 0 : c4;
+	c5 = c5 > 1023 ? 0 : c5;
+	c6 = c6 > 1023 ? 0 : c6;
 
 	reDraw();
 	
